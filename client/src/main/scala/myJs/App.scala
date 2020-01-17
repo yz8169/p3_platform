@@ -13,7 +13,7 @@ object App {
 
   @JSExport("init")
   def init = {
-    val shareTitle = "TMBQ"
+    val shareTitle = "P3"
     val beforeTitle = $("#shareTitle").text()
     $("#shareTitle").text(s"${beforeTitle}-${shareTitle}")
     disableCache

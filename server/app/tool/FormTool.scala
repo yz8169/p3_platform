@@ -9,7 +9,7 @@ import play.api.data.Forms._
 
 case class UserData(account: String, password: String)
 
-object FormTool {
+class FormTool {
 
   case class DeleteMisiionData(missionId: Int, kind: String)
 
