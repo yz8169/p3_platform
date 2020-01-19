@@ -17,6 +17,7 @@ import scala.jdk.CollectionConverters._
 import models.Tables._
 import implicits.Implicits._
 import org.joda.time.DateTime
+import org.zeroturnaround.zip.ZipUtil
 import play.api.libs.streams.ActorFlow
 
 import scala.concurrent.duration._
@@ -269,6 +270,71 @@ class GenomeController @Inject()(cc: ControllerComponents, userDao: UserDao, too
           Ok(Json.obj("valid" -> true))
       }
     }
+  }
+
+  def downloadResult = Action.async {
+    implicit request =>
+      val userId = tool.getUserId
+      val data = formTool.missionIdForm.bindFromRequest().get
+      val missionId = data.missionId
+      missionDao.selectByMissionId(userId, missionId).map {
+        mission =>
+          val missionIdDir = tool.getMissionIdDirById(missionId)
+          val resultDir = new File(missionIdDir, "result")
+          val resultFile = new File(missionIdDir, s"result.zip")
+          if (!resultFile.exists()) ZipUtil.pack(resultDir, resultFile)
+          Ok.sendFile(resultFile).withHeaders(
+            CACHE_CONTROL -> "max-age=3600",
+            CONTENT_DISPOSITION -> s"attachment; filename=${
+              mission.missionname
+            }.zip",
+            CONTENT_TYPE -> "application/x-download"
+          )
+      }
+  }
+
+  def downloadResultFile = Action.async {
+    implicit request =>
+      val userId = tool.getUserId
+      val data = formTool.missionFileForm.bindFromRequest().get
+      val missionId = data.missionId
+      missionDao.selectByMissionId(userId, missionId).map {
+        mission =>
+          val missionIdDir = tool.getMissionIdDirById(missionId)
+          val resultDir = new File(missionIdDir, "result")
+          val file = new File(resultDir, data.fileName)
+          Ok.sendFile(file).withHeaders(
+            //            CACHE_CONTROL -> "max-age=3600",
+            CONTENT_DISPOSITION -> s"attachment; filename=${
+              file.getName
+            }",
+            CONTENT_TYPE -> "application/x-download"
+          )
+      }
+  }
+
+  def getLogContent = Action.async {
+    implicit request =>
+      val userId = tool.getUserId
+      val data = formTool.missionIdForm.bindFromRequest().get
+      missionDao.selectByMissionId(userId, data.missionId).map {
+        mission =>
+          val missionIdDir = tool.getMissionIdDirById(data.missionId)
+          val logFile = new File(missionIdDir, s"log.txt")
+          val logStr = FileUtils.readFileToString(logFile, "UTF-8")
+          Ok(Json.toJson(logStr))
+      }
+  }
+
+  def deleteMissionById = Action.async {
+    implicit request =>
+      val data = formTool.deleteMissionForm.bindFromRequest().get
+      missionDao.deleteById(data.missionId).map {
+        x =>
+          val missionIdDir = tool.getMissionIdDirById(data.missionId)
+          Utils.deleteDirectory(missionIdDir)
+          Redirect(routes.GenomeController.getAllMission() + "?kind=" + data.kind)
+      }
   }
 
 

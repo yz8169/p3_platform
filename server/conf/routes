@@ -18,6 +18,10 @@ GET         /p3bacter/user/updateMissionSocket                    controllers.Ge
 GET         /p3bacter/user/getAllMission                          controllers.GenomeController.getAllMission
 POST        /p3bacter/user/crispr                                 controllers.GenomeController.crispr
 POST        /p3bacter/user/missionNameCheck                       controllers.GenomeController.missionNameCheck
+GET         /p3bacter/user/downloadResult                         controllers.GenomeController.downloadResult
+GET         /p3bacter/user/downloadResultFile                     controllers.GenomeController.downloadResultFile
+GET         /p3bacter/user/getLogContent                          controllers.GenomeController.getLogContent
+GET         /p3bacter/user/deleteMissionById                      controllers.GenomeController.deleteMissionById
 
 GET         /p3bacter/user/sample/getAllSample                    controllers.SampleController.getAllSample
 GET         /p3bacter/user/sample/deleteSampleBySampleName        controllers.SampleController.deleteSampleBySampleName
