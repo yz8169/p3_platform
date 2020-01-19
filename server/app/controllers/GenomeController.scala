@@ -18,6 +18,8 @@ import models.Tables._
 import implicits.Implicits._
 import org.joda.time.DateTime
 import org.zeroturnaround.zip.ZipUtil
+import play.api.data.Form
+import play.api.data.Forms.{mapping, seq, text}
 import play.api.libs.streams.ActorFlow
 
 import scala.concurrent.duration._
@@ -393,6 +395,92 @@ class GenomeController @Inject()(cc: ControllerComponents, userDao: UserDao, too
       missionExecutor.execLinux(shBuffer)
       Redirect(routes.GenomeController.getAllMission() + s"?kind=${kind}")
     }
+  }
+
+  def orthoMclBefore = Action { implicit request =>
+    Ok(views.html.user.orthoMcl())
+  }
+
+  def orthoMclResult = Action { implicit request =>
+    val data = formTool.missionIdForm.bindFromRequest().get
+    val resultDir = tool.getResultDirById(data.missionId)
+    val file = new File(resultDir, "all_orthomcl.out")
+    val lines = FileUtils.readLines(file).asScala
+    val allData = lines.map { line =>
+      val columns = line.split("\t")
+      val orthoMcls = columns(0)
+      val orthoMcl = columns(0).replaceAll("\\(.*\\):", "")
+      val genesR = ".*\\((\\d+) genes.*".r
+      val genesR(genes) = orthoMcls
+      val taxaR = ".*,(\\d+) taxa.*".r
+      val taxaR(taxa) = orthoMcls
+      Json.obj("orthomcl" -> orthoMcl, "genes" -> genes, "taxa" -> taxa, "detail" -> columns(1))
+    }
+    val infoFile = new File(resultDir, "gene.family.info.xls")
+    val infoLines = FileUtils.readLines(infoFile).asScala.drop(1)
+    val infoData = infoLines.map { line =>
+      val columns = line.split("\t")
+      Json.obj("Sam" -> columns(0), "homology.gene.family" -> columns(1), "special_gene" -> columns(2), "all" -> columns(3))
+    }
+    val strainFile = new File(resultDir, "genefamily.strain.mat.xls")
+    val (columnNames, array) = Utils.getInfoByFile(strainFile)
+    val json = Json.obj("allData" -> allData, "infoData" -> infoData, "columnNames" -> columnNames, "array" -> array)
+    Ok(json)
+  }
+
+  case class OrthoMclData(sampleNames: Seq[String], pvCutoff: String, piCutoff: String, pmatchCutoff: String)
+
+  val orthoMclForm = Form(
+    mapping(
+      "sampleNames" -> seq(text),
+      "pvCutoff" -> text,
+      "piCutoff" -> text,
+      "pmatchCutoff" -> text
+    )(OrthoMclData.apply)(OrthoMclData.unapply)
+  )
+
+  def orthoMcl = Action { implicit request =>
+    val data = orthoMclForm.bindFromRequest.get
+    val missionName = formTool.missionNameForm.bindFromRequest().get.missionName
+    val userId = tool.getUserId
+    val args = ArrayBuffer(
+      s"样品(多选):${data.sampleNames.mkString("<br>")}",
+      s"Pv Cutoff:${data.pvCutoff}",
+      s"Pi Cutoff:${data.piCutoff}",
+      s"Pmatch Cutoff:${data.pmatchCutoff}"
+    ).mkString(";")
+    val sampleNames = data.sampleNames.map { tmpSampleName =>
+      tool.getSampleName(tmpSampleName)
+    }
+    val row = MissionRow(0, s"${missionName}", userId, "orthoMcl", args, new DateTime(), None, "running")
+    val missionExecutor = new MissionExecutor(missionDao, tool, row)
+    val workspaceDir = missionExecutor.workspaceDir
+    val resultDir = missionExecutor.resultDir
+    sampleNames.foreach { sampleName =>
+      val file = tool.getPepFile(sampleName)
+      val destFile = new File(workspaceDir, s"${sampleName}.fa")
+      FileUtils.copyFile(file, destFile)
+    }
+    val fileStr = sampleNames.map { sampleName =>
+      s"${sampleName}.fa"
+    }.mkString(",")
+
+    val listFile = new File(workspaceDir, "fa.list")
+    val listBuffer = sampleNames.map { sampleName =>
+      s"${sampleName}\t${sampleName}.fa\t${sampleName}"
+    }
+    FileUtils.writeLines(listFile, listBuffer.asJava)
+    val command =
+      s"""
+         |perl  ${Utils.orthoMcl.unixPath}/orthomcl.pl --mode 1 --fa ${fileStr} --pi_cutoff ${data.piCutoff} --pv_cutoff ${data.pvCutoff} --pmatch_cutoff ${data.pmatchCutoff}
+         |perl ${Utils.binPath.unixPath}/Compare-rna/select_ortholog_gene_pro.pl fa.list all_orthomcl.out
+         |cp all_orthomcl.out ${resultDir.unixPath}/all_orthomcl.out
+         |cp gene.family.info.xls ${resultDir.unixPath}/gene.family.info.xls
+         |cp genefamily.strain.mat.xls ${resultDir.unixPath}/genefamily.strain.mat.xls
+       """.stripMargin
+    val shBuffer = ArrayBuffer(command)
+    missionExecutor.execLinux(shBuffer)
+    Redirect(routes.GenomeController.getAllMission() + s"?kind=${Utils.orthoMclStr}")
   }
 
 

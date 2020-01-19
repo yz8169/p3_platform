@@ -24,7 +24,10 @@ GET         /p3bacter/user/getLogContent                          controllers.Ge
 GET         /p3bacter/user/deleteMissionById                      controllers.GenomeController.deleteMissionById
 GET         /p3bacter/user/phyTreeBefore                          controllers.GenomeController.phyTreeBefore
 GET         /p3bacter/user/phyTreeResult                          controllers.GenomeController.phyTreeResult
-POST         /p3bacter/user/phyTree                          controllers.GenomeController.phyTree
+POST        /p3bacter/user/phyTree                                controllers.GenomeController.phyTree
+GET         /p3bacter/user/orthoMclBefore                         controllers.GenomeController.orthoMclBefore
+GET         /p3bacter/user/orthoMclResult                         controllers.GenomeController.orthoMclResult
+POST         /p3bacter/user/orthoMcl                         controllers.GenomeController.orthoMcl
 
 GET         /p3bacter/user/sample/getAllSample                    controllers.SampleController.getAllSample
 GET         /p3bacter/user/sample/deleteSampleBySampleName        controllers.SampleController.deleteSampleBySampleName
