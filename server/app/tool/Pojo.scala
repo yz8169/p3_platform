@@ -9,5 +9,7 @@ object Pojo {
 
   case class MyMessage(valid: Boolean, message: String)
 
+  case class SampleNameData(sampleName: String)
+
 
 }

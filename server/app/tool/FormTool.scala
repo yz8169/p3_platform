@@ -2,6 +2,7 @@ package tool
 
 import play.api.data._
 import play.api.data.Forms._
+import tool.Pojo._
 
 /**
   * Created by yz on 2018/6/12
@@ -201,6 +202,17 @@ class FormTool {
     mapping(
       "missionName" -> text
     )(MissionNameData.apply)(MissionNameData.unapply)
+  )
+
+
+}
+
+object FormTool{
+
+  val sampleNameForm = Form(
+    mapping(
+      "sampleName" -> text
+    )(SampleNameData.apply)(SampleNameData.unapply)
   )
 
 

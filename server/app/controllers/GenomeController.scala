@@ -2,26 +2,36 @@ package controllers
 
 import java.io.{File, FileFilter}
 
-import dao.{ClassifyDao, GeneInfoDao, SampleDao, UserDao}
+import akka.actor.{Actor, ActorSystem, PoisonPill, Props}
+import akka.stream.Materializer
+import dao.{ClassifyDao, GeneInfoDao, MissionDao, SampleDao, UserDao}
 import javax.inject.Inject
 import org.apache.commons.io.FileUtils
-import play.api.libs.json.Json
-import play.api.mvc.{AbstractController, Action, ControllerComponents}
-import tool.Tool
-import utils.Utils
+import play.api.libs.json.{JsValue, Json}
+import play.api.mvc.{AbstractController, Action, ControllerComponents, WebSocket}
+import tool.{FormTool, Tool}
+import utils.{MissionExecutor, Utils}
 
 import scala.collection.mutable.ArrayBuffer
 import scala.jdk.CollectionConverters._
 import models.Tables._
 import implicits.Implicits._
+import org.joda.time.DateTime
+import play.api.libs.streams.ActorFlow
+
+import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.language.postfixOps
 
 
 /**
  * Created by Administrator on 2020/1/17
  */
 class GenomeController @Inject()(cc: ControllerComponents, userDao: UserDao, tool: Tool, sampleDao: SampleDao,
-                                 geneInfoDao: GeneInfoDao, classifyDao: ClassifyDao) extends AbstractController(cc) {
+                                 geneInfoDao: GeneInfoDao, classifyDao: ClassifyDao, formTool: FormTool,
+                                 missionDao: MissionDao)(implicit val system: ActorSystem,
+                                                         implicit val materializer: Materializer) extends
+  AbstractController(cc) {
 
   def addSampleDataBefore = Action { implicit request =>
     Ok(views.html.user.addSampleData())
@@ -40,7 +50,7 @@ class GenomeController @Inject()(cc: ControllerComponents, userDao: UserDao, too
         val gbffFile = new File(tmpDir, "data.gbff")
         file.ref.moveTo(gbffFile, true)
         val pyFile = new File(Utils.pyPath, "readGenBank.py")
-        val command1=
+        val command1 =
           s"""
              |python ${pyFile.unixPath}
              |""".stripMargin
@@ -120,6 +130,145 @@ class GenomeController @Inject()(cc: ControllerComponents, userDao: UserDao, too
       Ok(Json.obj("valid" -> "false", "message" -> message))
     }
 
+  }
+
+  def toCrisprHelp = Action { implicit request =>
+    Ok(views.html.user.crisprHelp())
+  }
+
+  def crisprBefore = Action { implicit request =>
+    Ok(views.html.user.crispr())
+  }
+
+  def crisprResult = Action { implicit request =>
+    val data = formTool.missionIdForm.bindFromRequest().get
+    val resultDir = tool.getResultDirById(data.missionId)
+    val file = new File(resultDir, "out/result.json")
+    val jsonStr = FileUtils.readFileToString(file)
+    val json = Json.parse(jsonStr)
+    Ok(json)
+  }
+
+  def updateMissionSocket(kind: String) = WebSocket.accept[JsValue, JsValue] {
+    implicit request =>
+      val userId = tool.getUserId
+      var beforeMissions = Utils.execFuture(missionDao.selectAll(userId, kind))
+      var currentMissions = beforeMissions
+      ActorFlow.actorRef(out => Props(new Actor {
+        override def receive: Receive = {
+          case msg: JsValue if (msg \ "info").as[String] == "start" =>
+            out ! Utils.getJsonByTs(beforeMissions)
+            system.scheduler.scheduleOnce(3 seconds, self, Json.obj("info" -> "update"))
+          case msg: JsValue if (msg \ "info").as[String] == "update" =>
+            missionDao.selectAll(userId, kind).map {
+              missions =>
+                currentMissions = missions
+                if (currentMissions.size != beforeMissions.size) {
+                  out ! Utils.getJsonByTs(currentMissions)
+                } else {
+                  val b = currentMissions.zip(beforeMissions).forall {
+                    case (currentMission, beforeMission) =>
+                      currentMission.id == beforeMission.id && currentMission.state == beforeMission.state
+                  }
+                  if (!b) {
+                    out ! Utils.getJsonByTs(currentMissions)
+                  }
+                }
+                beforeMissions = currentMissions
+                system.scheduler.scheduleOnce(3 seconds, self, Json.obj("info" -> "update"))
+            }
+          case _ =>
+            self ! PoisonPill
+        }
+
+        override def postStop(): Unit = {
+          self ! PoisonPill
+        }
+
+      }))
+
+  }
+
+  def crispr = Action(parse.multipartFormData) { implicit request =>
+    val data = formTool.crisprForm.bindFromRequest.get
+    val missionName = formTool.missionNameForm.bindFromRequest().get.missionName
+    val userId = tool.getUserId
+    val kind = "crispr"
+    val args = ArrayBuffer(
+      s"Minimal Repeat Length:${data.minDR}",
+      s"Maximal Repeat Length:${data.maxDR}",
+      s"Allow Repeat Mismatch:${if (data.arm.isDefined) "yes" else "no"}",
+      s"Minimal Spacers size in function of Repeat size:${data.percSPmin}",
+      s"Maximal Spacers size in function of Repeat size:${data.percSPmax}",
+      s"Maximal allowed percentage of similarity between Spacers:${data.spSim}",
+      s"Percentage mismatchs allowed between Repeats:${data.mismDRs}",
+      s"Percentage mismatchs allowed for truncated Repeat:${data.truncDR}",
+      s"Size of Flanking regions in base pairs (bp) for each analyzed CRISPR array:${data.flank}",
+      s"Alternative detection of truncated repeat:${if (data.dt.isDefined) "yes" else "no"}",
+      s"Perform CAS gene detection:${if (data.cas.isDefined) "yes" else "no"}"
+    )
+    val defValue = data.defValue match {
+      case "S" => "SubTyping"
+      case "T" => "Typing"
+      case "G" => "General (permissive)"
+    }
+    if (data.cas.isDefined) {
+      args ++= ArrayBuffer(
+        s"Clustering model:${defValue}",
+        s"Unordered:${if (data.meta.isDefined) "yes" else "no"}"
+      )
+    }
+    val argStr = args.mkString(";")
+    val row = MissionRow(0, s"${missionName}", userId, kind, argStr, new DateTime(), None, "running")
+    val missionExecutor = new MissionExecutor(missionDao, tool, row)
+    val (tmpDir, resultDir) = (missionExecutor.workspaceDir, missionExecutor.resultDir)
+    val seqFile = new File(tmpDir, "seq.fa")
+    data.method match {
+      case "text" =>
+        FileUtils.writeStringToFile(seqFile, data.queryText)
+      case "file" =>
+        val file = request.body.file("file").get
+        file.ref.moveTo(seqFile, replace = true)
+    }
+    val commandBuffer = ArrayBuffer(s"export PATH=$$PATH:/${Utils.dosPath2Unix(Utils.vmatchDir)}\n", s"perl ${Utils.dosPath2Unix(Utils.crisprDir)}/CRISPRCasFinder.pl -in ${Utils.dosPath2Unix(seqFile)} -out ${Utils.dosPath2Unix(resultDir)}/out -so ${Utils.dosPath2Unix(Utils.vmatchDir)}/SELECT/sel392v2.so " +
+      s"-drpt ${Utils.dosPath2Unix(Utils.crisprDir)}/supplementary_files/repeatDirection.tsv -rpts ${Utils.dosPath2Unix(Utils.crisprDir)}/supplementary_files/Repeat_List.csv " +
+      s"-minDR ${data.minDR} -maxDR ${data.maxDR} -percSPmin ${data.percSPmin} -percSPmax ${data.percSPmax} " +
+      s"-spSim ${data.spSim} -mismDRs ${data.mismDRs}  -truncDR ${data.truncDR} -flank ${data.flank} " +
+      s"-cf ${Utils.dosPath2Unix(Utils.crisprDir)}/CasFinder-2.0.2 ")
+    if (data.arm.isEmpty) commandBuffer += "-noMism"
+    if (data.dt.isDefined) commandBuffer += "-betterDetectTrunc"
+    if (data.cas.isDefined) {
+      commandBuffer += "-cas -rcfowce "
+      commandBuffer += s"-def ${data.defValue}"
+      if (data.meta.isDefined) commandBuffer += "-meta"
+    }
+    val shBuffer = ArrayBuffer(commandBuffer.mkString(" "))
+    missionExecutor.execLinux(shBuffer)
+    Redirect(routes.GenomeController.getAllMission() + s"?kind=${kind}")
+  }
+
+  def getAllMission = Action.async {
+    implicit request =>
+      val data = formTool.kindForm.bindFromRequest().get
+      val kind = data.kind
+      val userId = tool.getUserId
+      missionDao.selectAll(userId, kind).map {
+        x =>
+          val array = Utils.getArrayByTs(x)
+          Ok(Json.toJson(array))
+      }
+  }
+
+  def missionNameCheck = Action.async { implicit request =>
+    val data = formTool.missionForm.bindFromRequest.get
+    val userId = tool.getUserId
+    missionDao.selectOptionByMissionAttr(userId, data.missionName, data.kind).map { mission =>
+      mission match {
+        case Some(y) => Ok(Json.obj("valid" -> false))
+        case None =>
+          Ok(Json.obj("valid" -> true))
+      }
+    }
   }
 
 

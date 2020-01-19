@@ -1,13 +1,6 @@
 @()(implicit request: RequestHeader)
-@main("基因组管理")("missionManage") {
-	<style>
-			.genome-pre {
-				white-space: pre-wrap;
-				word-wrap: break-word;
-				border: 0px solid #ccc;
-				background-color: white;
-			}
-	</style>
+@main("基因组管理")("sampleManage") {
+
 	<div class="page-content">
 
 		<div class="page-bar">
@@ -32,12 +25,6 @@
 
 						<div class="portlet-body">
 
-							<div id="toolbar" style="margin-bottom: 10px">
-								<button type="button" class="btn btn-primary" id="deleteButton" onclick="SampleManage.addShow">
-									<i class="fa fa-plus"></i>&nbsp;新增基因组
-								</button>
-							</div>
-
 							<label>选择显示的列:</label>
 							<div id="checkbox" class="checkbox">
 
@@ -52,12 +39,12 @@
 										<th data-field="organism" data-sortable="true">种名</th>
 										<th data-field="length" data-sortable="true">基因组长度</th>
 										<th data-field="definition" data-sortable="true">描述</th>
-										<th data-field="taxonomy" data-formatter="taxnomyFmt" data-sortable="true">
-											分类学信息</th>
+										<th data-field="taxonomy" data-formatter="taxnomyFmt" data-sortable="true">分类学信息</th>
 									</tr>
 								</thead>
 							</table>
 
+
 						</div>
 					</div>
 				</div>
@@ -67,67 +54,76 @@
 		</div>
 
 	</div>
-
-
-	<div id="addModal" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
-		<div class="modal-dialog" style="width: 800px">
-			<div class="modal-content">
-				<div class="modal-header bg-primary">
-					<button type="button" class="close" data-dismiss="modal" aria-hidden="true"></button>
-					<h4 class="modal-title">
-						<i class="fa fa-plus"></i>
-						<span id="lblAddTitle" style="font-weight: bold">新增细菌基因组数据</span>
-					</h4>
-				</div>
-				<form class="form-horizontal" id="form" action="" data-toggle="validator" enctype="multipart/form-data">
-					<div class="modal-body">
-						<div class="row-fluid">
-
-							<div class="form-group">
-								<label class="control-label col-sm-4">选择数据文件（*.gbk,*.gb,*.gbff）:</label>
-								<div class="col-sm-6">
-									<input id="compoundConfigFile" type="file" class="file control-label" name="file"
-									data-show-preview="false" accept=".xlsx"
-									data-show-upload="false" >
-									<span class="help-block"><a href=""><em>
-										示例数据</em></a></span>
-								</div>
-							</div>
-
-							<hr>
-
-							<div style="margin: 20px">
-								<p>注1：基因组数据文件，为<b>GenBank</b>文件。</p>
-								<p>注2：样品编号为GenBank文件BioSample号，重名会覆盖数据库中已有的数据。</p>
-								<p>注3：GenBank文件包含注释信息，则直接导入相关的CDS信息。</p>
-								<p>注4：GenBank文件不包含注释信息，则调用genemark进行ORF预测。</p>
-							</div>
-
-
-						</div>
-					</div>
-					<div class="modal-footer bg-info">
-						<input type="hidden" id="ID" name="ID" />
-						<button type="button" class="btn blue" onclick="SampleManage.add">确定</button>
-						<button type="button" class="btn green" data-dismiss="modal">取消</button>
-					</div>
-				</form>
-
-			</div>
-		</div>
-	</div>
-
 
 	<script>
 
+			function taxnomyFmt(value, row, index) {
+				return value.replace(/,/g, ";&nbsp;")
+			}
+
 			$(function () {
-				SampleManage.init
+				var array = ["种名", "基因组长度", "描述", "分类学信息"]
+				var values = ["organism", "length", "definition", "taxonomy"]
+				var html = ""
+				$.each(array, function (n, value) {
+							html += "<label style='margin-right: 15px'>" +
+									"<input type='checkbox' checked='checked' value='" + values[n] + "' onclick=\"setColumns('" + values[n] + "')\">" + value +
+									"</label>"
+						}
+				);
+				$("#checkbox").append(html)
+
+				$.ajax({
+					url: "@routes.SampleController.getAllSample()",
+					type: "get",
+					dataType: "json",
+					success: function (data) {
+						$('#table').bootstrapTable({
+							data: data
+						});
+						var hideColumns = ["taxonomy"]
+						$.each(hideColumns, function (n, value) {
+							$('#table').bootstrapTable('hideColumn', value);
+							$("input:checkbox[value='" + value + "']").attr("checked", false)
+						})
+					}
+				})
 
 			})
 
-			Tool.fileInput
+			function setColumns(value) {
+				var element = $("input:checkbox[value=" + value + "]")
+				if (element.is(":checked")) {
+					$('#table').bootstrapTable('showColumn', value);
+				} else {
+					$('#table').bootstrapTable('hideColumn', value);
+				}
+			}
 
 
+			function deleteProject(id) {
+				swal({
+							title: "",
+							text: "确认删除？",
+							type: "warning",
+							showCancelButton: true,
+							showConfirmButton: true,
+							confirmButtonClass: "btn-danger",
+							confirmButtonText: "确定",
+							closeOnConfirm: false,
+							cancelButtonText: "取消"
+						},
+						function () {
+							$.ajax({
+								url: "@routes.SampleController.deleteSampleBySampleName()?sampleName=" + id,
+								type: "get",
+								success: function (data) {
+									$('#table').bootstrapTable("load", data);
+									swal("成功！", "删除数据成功！", "success")
+								}
+							});
+						});
+			}
 	</script>
 
 

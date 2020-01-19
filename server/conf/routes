@@ -5,24 +5,34 @@
 
 # An example controller showing a sample home page
 
-GET         /                                         controllers.AppController.loginBefore
-POST        /p3bacter/login                           controllers.AppController.login
+GET         /                                                     controllers.AppController.loginBefore
+POST        /p3bacter/login                                       controllers.AppController.login
 
-GET         /p3bacter/user/sampleManageBefore         controllers.GenomeController.sampleManageBefore
-GET         /p3bacter/user/addSampleDataBefore        controllers.GenomeController.addSampleDataBefore
-POST         /p3bacter/user/addSampleData        controllers.GenomeController.addSampleData
+GET         /p3bacter/user/sampleManageBefore                     controllers.GenomeController.sampleManageBefore
+GET         /p3bacter/user/addSampleDataBefore                    controllers.GenomeController.addSampleDataBefore
+POST        /p3bacter/user/addSampleData                          controllers.GenomeController.addSampleData
+GET         /p3bacter/user/crisprBefore                           controllers.GenomeController.crisprBefore
+GET         /p3bacter/user/toCrisprHelp                           controllers.GenomeController.toCrisprHelp
+GET         /p3bacter/user/crisprResult                           controllers.GenomeController.crisprResult
+GET         /p3bacter/user/updateMissionSocket                    controllers.GenomeController.updateMissionSocket(kind)
+GET         /p3bacter/user/getAllMission                          controllers.GenomeController.getAllMission
+POST        /p3bacter/user/crispr                                 controllers.GenomeController.crispr
+POST        /p3bacter/user/missionNameCheck                       controllers.GenomeController.missionNameCheck
+
+GET         /p3bacter/user/sample/getAllSample                    controllers.SampleController.getAllSample
+GET         /p3bacter/user/sample/deleteSampleBySampleName        controllers.SampleController.deleteSampleBySampleName
 
 
-GET         /p3bacter/user/logout                     controllers.UserController.logout
+GET         /p3bacter/user/logout                                 controllers.UserController.logout
 
-GET         /p3bacter/tool/getExampleFile             controllers.ToolController.getExampleFile
-GET         /p3bacter/tool/downloadExampleFile        controllers.ToolController.downloadExampleFile
+GET         /p3bacter/tool/getExampleFile                         controllers.ToolController.getExampleFile
+GET         /p3bacter/tool/downloadExampleFile                    controllers.ToolController.downloadExampleFile
 
 
-GET         /javascriptRoutes                         controllers.AppController.javascriptRoutes
+GET         /javascriptRoutes                                     controllers.AppController.javascriptRoutes
 
 
 
 # Map static resources from the /public folder to the /assets URL path
-GET         /assets/*file                             controllers.Assets.at(path="/public", file)
+GET         /assets/*file                                         controllers.Assets.at(path="/public", file)
       

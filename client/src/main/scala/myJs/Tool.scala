@@ -8,6 +8,7 @@ import myPkg.jquery._
 
 import scala.scalajs.js.annotation.{JSExport, JSExportTopLevel}
 import myJs.myPkg.Implicits._
+import org.scalajs.dom.Element
 
 /**
   * Created by yz on 2019/3/13
@@ -90,6 +91,13 @@ object Tool {
   def fileInput = {
     val options = FileInputOptions.showPreview(false).browseLabel("选择...").removeLabel("删除文件").language("zh")
     $(".file").fileinput(options)
+  }
+
+  @JSExport("expand")
+  def expand(y: Element) = {
+    val tool = $(y).parent().find(".tools a:last")
+    $(tool).click()
+
   }
 
 
