@@ -337,5 +337,63 @@ class GenomeController @Inject()(cc: ControllerComponents, userDao: UserDao, too
       }
   }
 
+  def phyTreeBefore = Action { implicit request =>
+    Ok(views.html.user.phyTree())
+  }
+
+  def phyTreeResult = Action { implicit request =>
+    val data = formTool.missionIdForm.bindFromRequest().get
+    val resultDir = tool.getResultDirById(data.missionId)
+    val treeFile = new File(resultDir, "tree.newick")
+    val treeStr = FileUtils.readFileToString(treeFile)
+    Ok(Json.obj("tree" -> treeStr))
+  }
+
+  def phyTree = Action { implicit request =>
+    val data = formTool.phyTreeForm.bindFromRequest.get
+    if (data.sampleNames.contains(data.refSampleName)) {
+      Ok(Json.obj("valid" -> "false", "message" -> "样品不能包含参考样品!"))
+    } else {
+      val missionName = formTool.missionNameForm.bindFromRequest().get.missionName
+      val userId = tool.getUserId
+      val kind = "phyTree"
+      val args = ArrayBuffer(
+        s"Reference sample:${data.refSampleName}",
+        s"Sample:${data.sampleNames.mkString("<br>")}"
+      )
+      val refSampleName = tool.getSampleName(data.refSampleName)
+      val sampleNames = data.sampleNames.map(x => tool.getSampleName(x))
+      val argStr = args.mkString(";")
+      val row = MissionRow(0, s"${missionName}", userId, kind, argStr, new DateTime(), None, "running")
+      val missionExecutor = new MissionExecutor(missionDao, tool, row)
+      val (tmpDir, resultDir) = (missionExecutor.workspaceDir, missionExecutor.resultDir)
+      val file = tool.getGenomeFile(refSampleName)
+      FileUtils.copyFileToDirectory(file, tmpDir)
+      val lines = ArrayBuffer(s"ref=${file.getName}")
+      sampleNames.foreach { sampleName =>
+        val file = tool.getGenomeFile(sampleName)
+        FileUtils.copyFileToDirectory(file, tmpDir)
+        lines += s"${sampleName}=${file.getName}"
+      }
+      val faListFile = new File(tmpDir, "seq.list")
+      FileUtils.writeLines(faListFile, lines.asJava)
+      val command =
+        s"""
+           |dos2unix *
+           |perl ${Utils.dosPath2Unix(Utils.binPath)}/09.Snp/src/find_repeat_for_bac_snp.pl  --ref ${file.getName} -out dup.out
+           |perl ${Utils.dosPath2Unix(Utils.binPath)}/09.Snp/src/MUMmerSnpPipline.V2.3.pl -lib seq.list -dup dup.out -dir out -readlist reads_info.list -pileup_q 20 -pileup_e 5 -pileup_n 10
+           |perl ${Utils.dosPath2Unix(Utils.binPath)}/13.Phylogenetic_tree/src/snp2fa_v2.pl out/clean.snp.pileup2 all.mfa ${refSampleName}
+           |perl ${Utils.dosPath2Unix(Utils.binPath)}/13.Phylogenetic_tree/src/02.phylogeny/bin/phylo_tree.pl all.mfa -format mfa -type ml -b '-4' -d nt -outdir treeOut
+           |cp treeOut/tree.png ${Utils.dosPath2Unix(resultDir)}/
+           |cp treeOut/tree.newick ${Utils.dosPath2Unix(resultDir)}/
+           |cp treeOut/tree.svg ${Utils.dosPath2Unix(resultDir)}/
+           |cp treeOut/tree.root.svg ${Utils.dosPath2Unix(resultDir)}/
+               """.stripMargin
+      val shBuffer = ArrayBuffer(command)
+      missionExecutor.execLinux(shBuffer)
+      Redirect(routes.GenomeController.getAllMission() + s"?kind=${kind}")
+    }
+  }
+
 
 }

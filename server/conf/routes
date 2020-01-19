@@ -22,6 +22,9 @@ GET         /p3bacter/user/downloadResult                         controllers.Ge
 GET         /p3bacter/user/downloadResultFile                     controllers.GenomeController.downloadResultFile
 GET         /p3bacter/user/getLogContent                          controllers.GenomeController.getLogContent
 GET         /p3bacter/user/deleteMissionById                      controllers.GenomeController.deleteMissionById
+GET         /p3bacter/user/phyTreeBefore                          controllers.GenomeController.phyTreeBefore
+GET         /p3bacter/user/phyTreeResult                          controllers.GenomeController.phyTreeResult
+POST         /p3bacter/user/phyTree                          controllers.GenomeController.phyTree
 
 GET         /p3bacter/user/sample/getAllSample                    controllers.SampleController.getAllSample
 GET         /p3bacter/user/sample/deleteSampleBySampleName        controllers.SampleController.deleteSampleBySampleName
